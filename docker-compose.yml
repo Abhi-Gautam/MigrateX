@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  ingestion:
+    build: ./ingestion
+    container_name: migratex-ingestion
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+  irgen:
+    build: ./irgen
+    container_name: migratex-irgen
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - ingestion
+
+  chunking:
+    build: ./chunking
+    container_name: migratex-chunking
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - irgen
+
+  rag:
+    build: ./rag
+    container_name: migratex-rag
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - chunking
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+  translate:
+    build: ./translate
+    container_name: migratex-translate
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - rag
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+  post:
+    build: ./post
+    container_name: migratex-post
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - translate
+
+  testgen:
+    build: ./testgen
+    container_name: migratex-testgen
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - post
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+  testexec:
+    build: ./testexec
+    container_name: migratex-testexec
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - testgen
