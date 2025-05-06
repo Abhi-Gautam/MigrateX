@@ -155,14 +155,14 @@ Prior systems, even those integrating LLMs into migration workflows, have focuse
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.6\textwidth]{figures/system_overview_1.png}
-    \caption{\textbf{MigrateX System Architecture Overview: The pipeline consists of 10 distinct stages, each running in its own containerized environment. The system integrates compiler-grade analysis, RAG-enhanced LLM translation, and automated testing to ensure reliable code migration.}}
+    \caption{{MigrateX System Architecture Overview: The pipeline consists of 10 distinct stages, each running in its own containerized environment. The system integrates compiler-grade analysis, RAG-enhanced LLM translation, and automated testing to ensure reliable code migration.}}
     \label{fig:system-overview}
 \end{figure*}
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.6\textwidth]{figures/system_overview_2.png}
-    \caption{\textbf{The Translate and Repair component performs LLM-guided translation, followed by static validation, test execution and human feedback for automatic repair, ensuring safe, semantically consistent outputs.}}
+    \caption{{The Translate and Repair component performs LLM-guided translation, followed by static validation, test execution and human feedback for automatic repair, ensuring safe, semantically consistent outputs.}}
     \label{fig:translate-overview}
 \end{figure*}
 
@@ -194,27 +194,8 @@ By focusing on module extraction, we create a set of smaller, self-contained cod
 This approach is particularly useful for projects with large codebases or when dealing with complex dependencies. By breaking down the code into smaller, independently translatable units, we minimize the risk of introducing errors during translation and enable easy reintegration after translation is complete.
 
 \medskip
-\noindent\textbf{Comparison of representations:}
-\begin{table*}[htbp]
-\begin{quote}
-\begin{tabular}{p{3cm}p{5cm}p{7cm}}
-\bf Representation & \bf What it captures & \bf Why it matters for translation \\\hline
-\\
-CFG & Control-flow edges between basic blocks  
- & Good for slicing and determining execution order, but loses type, syntax and data dependencies—insufficient to reconstruct valid code. \\
-AST & Full parse tree plus semantic annotations (types, scopes, symbol‐tables)  
- & Retains declarations, expressions, macros and context required to regenerate correct target-language constructs and guide the LLM with precise prompts. \\
-Unified IR & Canonical operations, explicit typing, metadata annotations  
- & Enables consistent naming, cross-language normalization, and programmatic transformations (e.g.\ ownership inference) that neither AST nor CFG alone can uniformly provide. \\
-Module Extraction & Self-contained logical units like functions or classes  
- & Allows for modular translation, reducing complexity, preserving context and dependencies within smaller units, and enabling independent testing and later reintegration. \\
-\end{tabular}
-\end{quote}
-\end{table*}
-
-\medskip
 \noindent
-CFGs are indispensable for identifying basic-block boundaries and control dependencies, but by themselves they strip away the very syntax and typing information that an LLM needs to emit safe, idiomatic code in Rust or Go.  ASTs preserve that syntax and semantic detail—such as struct definitions, template parameters, symbol scopes, and macro uses—making them essential for reconstructing valid declarations and expressions. However, ASTs vary greatly between source and target languages, so we lower both into an MLIR-style unified IR: a common intermediate form with explicit operations, normalized type representations, and metadata annotations that guide the LLM and downstream passes uniformly.  
+CFGs are indispensable for identifying basic-block boundaries and control dependencies, but by themselves they strip away the very syntax and typing information that an LLM needs to emit safe, idiomatic code in Rust or Go.  ASTs preserve that syntax and semantic detail—such as struct definitions, template parameters, symbol scopes, and macro uses—making them essential for reconstructing valid declarations and expressions. 
 
 By combining module slicing and extraction with language-specific ASTs and CFGs we ensure, 
 Each code unit is isolated and self-contained, preserving its context for precise translation. 
@@ -225,12 +206,32 @@ This multi-representation approach yields far more reliable, semantically accura
 
 \textbf{Motivation}: By focusing on module slicing and extraction rather than relying solely on CFGs or a unified IR, we can handle each code unit independently, preserving its semantics and structure for better translation quality. This reduces the complexity of large-scale transformations, providing a more scalable and maintainable translation pipeline.
 
-\begin{figure*}[t]
+\begin{figure*}[!t]
         \centering
         \includegraphics[width=\textwidth]{figures/cfg.png}
-        \caption{\textbf{The source C++ function and translated Rust function.}}
+        \caption{Bottom-up construction of self-contained code chunks via dependency closure. Starting from leaf routines in \texttt{prompt.rs} (e.g.\ \texttt{get\_url}, \texttt{send\_request}, \texttt{build\_command\_request}, \texttt{build\_documentation\_request}), we compute each leaf’s full dependency closure and complete their translation, update our RAG. Then we feed these definitions as ground truth to form logical modules in \texttt{command.rs} (e.g.\ \texttt{generate\_command}, \texttt{interactive\_command\_prompt}) and \texttt{documentation.rs} (\texttt{generate\_documentation}). Repeat the same process. Finally, these module chunks are linked back to the application entry point in \texttt{main.rs} via the \texttt{cli} command, yielding fully self-contained units that fit within LLM context windows and underpin our RAG-guided translation pipeline.} 
         \label{fig:translate-overview1}
 \end{figure*}
+
+\begin{table*}[!t]
+    \caption{Comparison of representations CFG, AST, Unified IR and Self-Contained Module.}
+\begin{quote}
+\begin{tabular}{p{3cm}p{5cm}p{7cm}}
+\bf Representation & \bf What it captures & \bf Why it matters for translation \\\hline
+\\
+CFG & Control-flow edges between basic blocks  
+ & Good for slicing and determining execution order, but loses type, syntax and data dependencies—insufficient to reconstruct valid code. \\
+AST & Full parse tree plus semantic annotations (types, scopes, symbol‐tables)  
+ & Retains declarations, expressions, macros and context required to regenerate correct target-language constructs and guide the LLM with precise prompts. \\
+Unified IR & Canonical operations, explicit typing, metadata annotations  
+ & Enables consistent naming, cross-language normalization, and programmatic transformations (e.g.\ ownership inference) that neither AST nor CFG alone can uniformly provide. \\
+ Self-Contained Module & Self-contained logical units like functions or classes  
+ & Allows for modular translation, reducing complexity, preserving context and dependencies within smaller units, and enabling independent testing and later reintegration. \\
+ \bigskip
+\end{tabular}
+\end{quote}
+\end{table*}
+
 
 \subsection{Module Extraction and Normalization}
 
@@ -270,12 +271,9 @@ In practice, generating metadata is automated: as soon as a file is analyzed or 
 \textbf{Motivation}: Relying on independent modules allows for high-quality modular translation while retaining context and dependencies, making the code easier to process and merge later.
 
 \subsection{Function Chunking Service}
+\label{subsec:function_chunking}
 
-The modules are then segmented into ``units of functionality''---typically, self-contained functions or classes. Dependency closure is computed so that helper functions or constants are either embedded or linked.
-
-Chunks are sized dynamically to fit comfortably within LLM context windows (~1-2k tokens), balancing completeness with cost control.
-
-At the core of MigrateX is the modular approach that abstracts away language-specific syntax and exposes program semantics. We follow approaches like LLMLift, which instructs LLMs to emit a common module representation, capturing the necessary logic without relying heavily on an intermediate representation (IR). Similarly, recent work shows that leveraging compiler-generated modules as a pivot improves cross-language code translation accuracy. In our system, modules are designed with fields for operators, operands, types, and control flow.
+As illustrated in Figure~\ref{fig:translate-overview1}, the chunking service works bottom-up on the Source codebase by first identifying leaf functions with no further sub-calls, then computing each leaf’s full dependency closure—including required types, helpers, and constants—to produce self-contained chunks for RAG-grounded prompting. These chunks are assembled into logical modules and re-linked to the \texttt{main.rs}\,$\to$\,\texttt{cli} entry point, ensuring correct call ordering and allowing each unit to be translated and tested in isolation. By bounding chunk sizes to fit within LLM context limits and providing precise, dependency-complete context, this approach dramatically improves translation fidelity, reduces hallucinations, and scales seamlessly to large codebases.
 
 \subsection{Retrieval-Augmented Generation (RAG) Layer}
 \begin{figure}[htbp]
@@ -300,45 +298,36 @@ At the core of MigrateX is the modular approach that abstracts away language-spe
     \draw[arrow] (retriever) -- (prompt);
     
     \end{tikzpicture}
-    \caption{\textbf{Compact RAG subsystem architecture in top-to-bottom layout.}}
+    \caption{{Compact RAG subsystem architecture in top-to-bottom layout.}}
     \label{fig:rag_compact}
     \end{figure}
     
     
 
-Each IR chunk is embedded using CodeBERT or StarEncoder models, and stored in a FAISS vector database.
-
-When a chunk is being translated, the system queries the database to retrieve \emph{k} semantically similar examples, which are injected into the LLM prompt as few-shot examples.
-MigrateX uses a Retrieval-Augmented Generation (RAG) subsystem to incorporate external knowledge into translation tasks. RAG combines a vector-based retrieval system with the LLM’s generation abilities, providing grounding information to improve accuracy.
-
-\begin{itemize}
-    \item \textbf{Semantic Embedding Structure}: We maintain a corpus of prior code examples, documentation, and migration notes. Each document (e.g., a code snippet or comment) is converted into embeddings via a semantic model (such as a code-specific encoder). The vector store is organized by context (e.g., by library or feature). For example, functions using a particular framework get similar embeddings. We might embed not only raw code but also structured metadata (like tags or natural language descriptions) so that a single vector query can retrieve both code and docs.
-
-    \item \textbf{Retrieval Process}: When migrating a piece of code, we construct a query embedding from relevant context (e.g., function name + key variables). We then perform a nearest-neighbor search in the vector index. If a “close” example exists (above a similarity threshold), it is retrieved. According to RAG best practices, this retrieval yields snippets or instructions that are appended to the LLM prompt. For instance, when translating a database access function, the system may retrieve a previous migration of a similar query function. This snippet is given to the model as additional context to guide code structure or API usage.
-
-    \item \textbf{Success vs. Failure}: A successful retrieval means the system found relevant prior content. In that case, the prompt is augmented with the retrieved examples or summaries (``As a hint, here is a similar example...'') which often boosts correctness. In case of retrieval failure (no relevant item or low similarity), we fall back to alternative strategies: e.g., we might expand the query with synonyms, or proceed with an empty retrieval (i.e., rely solely on the model’s base knowledge). The system logs when retrieval fails, so that humans can later add missing examples to the corpus.
-
-    \item \textbf{Fallback Strategy}: If retrieval does not yield useful context, MigrateX can try keyword-based search (e.g., repository grep) or present a ``no-doc'' mode to the model (omit retrieval part). This ensures the process doesn’t stall. In practice, many queries will succeed (especially as the corpus grows), but a robust fallback prevents dead-ends.
-
-    \item \textbf{Human Feedback \& Corpus Update}: MigrateX maintains awareness of the broader project context to keep the LLM grounded and minimize repeated information. This involves storing persistent context and smartly querying it as needed.
-
-    \item \textbf{Stored Context Information}: We track high-level project info (e.g., list of modules, architecture diagrams, coding standards) and task-specific context (e.g., which files have been processed, their metadata status). We also log conversation history for interactive sessions: for instance, if the system has asked the user clarifying questions, those Q\&As are stored. Key pieces like ``latest commit ID'' or ``last function translation outcome'' become part of a long-term memory.
-
-    \item \textbf{Querying Context}: When framing a prompt, MigrateX selectively retrieves relevant context. We may include recent changes, related code files, or user instructions (e.g., ``the developer preferred variable names with prefix old\_''). This is done via RAG-like retrieval or simple heuristics: for example, if translating function foo, we fetch foo’s documentation from metadata or any previous translations of foo into other languages.
-
-    \item \textbf{Saving Model Tokens \& Preventing Loss}: Because LLMs have limited context windows, we periodically compress or summarize context. For example, after processing a large file, we generate a brief summary (``File X translated; encountered API Y usage'') and store it in metadata, while archiving the full details externally. When the conversation grows long, we might discard low-level chatter (like intermediate debug attempts) and keep only essential facts. In some implementations, we maintain a rolling context window: the most recent and relevant tokens are kept in active memory, older context is stored in vector memory for retrieval if needed. This approach of summarizing and selectively recalling prevents token overflow while preserving critical information.
-
-    \item \textbf{Context Caching}: We also leverage caching to save API calls. For example, if multiple translations ask ``How do I convert List to Array[]?'', we cache the answer snippet so the LLM doesn’t consume tokens recomputing it. This saves both tokens and computation \cite{openai-prompt-caching}.
-
-    \item \textbf{Balanced Context Management}: By structuring context as both short-term (immediate task) and long-term (project metadata, human preferences), MigrateX ensures the LLM has just enough information to stay coherent without exceeding limits. If context seems at risk of loss (e.g., very long chats), the system automatically summarizes and trims, alerting the user as needed.
-\end{itemize}
+    Building upon the self-contained module chunks generated in Section~3.4 and illustrated in Figure~\ref{fig:translate-overview1}, our RAG layer now indexes each module’s embedding in a vector store. At translation time, we embed the source function or code region and retrieve the top-$k$ module embeddings whose semantic context best matches the query. These retrieved, dependency-complete modules are fed as in-context ground-truth to the LLM translator, ensuring each translation is grounded in precise, full-dependency context. After generation, verified translations are optionally re-indexed to enrich the retrieval database over time. By operating on fully closed self-contained chunks, this workflow minimizes hallucinations, improves translation fidelity, and scales seamlessly to large Rust codebases.
 
 
-After retrieval, when the LLM produces output, human reviewers can rate the relevance of the retrieved context (e.g., ``this example was helpful'' or not). Positive feedback can trigger the system to index the new migration result back into the vector store, enriching the corpus. If a retrieved example was unhelpful, we may drop it or adjust embeddings. Over time, the corpus evolves with human-in-the-loop refinement.
+    {Semantic Embedding Structure}: We maintain a corpus of prior code examples, documentation, and migration notes. Each document (e.g., a code snippet or comment) is converted into embeddings via a semantic model (such as a code-specific encoder). The vector store is organized by context (e.g., by library or feature). For example, functions using a particular framework get similar embeddings. We might embed not only raw code but also structured metadata (like tags or natural language descriptions) so that a single vector query can retrieve both code and docs.
+
+    {Retrieval Process}: When migrating a piece of code, we construct a query embedding from relevant context (e.g., function name + key variables). We then perform a nearest-neighbor search in the vector index. If a “close” example exists (above a similarity threshold), it is retrieved. According to RAG best practices, this retrieval yields snippets or instructions that are appended to the LLM prompt. For instance, when translating a database access function, the system may retrieve a previous migration of a similar query function. This snippet is given to the model as additional context to guide code structure or API usage.
+
+    {Success vs. Failure}: A successful retrieval means the system found relevant prior content. In that case, the prompt is augmented with the retrieved examples or summaries (``As a hint, here is a similar example...'') which often boosts correctness. In case of retrieval failure (no relevant item or low similarity), we fall back to alternative strategies: e.g., we might expand the query with synonyms, or proceed with an empty retrieval (i.e., rely solely on the model’s base knowledge). The system logs when retrieval fails, so that humans can later add missing examples to the corpus.
+
+    {Fallback Strategy}: If retrieval does not yield useful context, MigrateX can try keyword-based search (e.g., repository grep) or present a ``no-doc'' mode to the model (omit retrieval part). This ensures the process doesn’t stall. In practice, many queries will succeed (especially as the corpus grows), but a robust fallback prevents dead-ends.
+
+    {Human Feedback \& Corpus Update}: MigrateX maintains awareness of the broader project context to keep the LLM grounded and minimize repeated information. This involves storing persistent context and smartly querying it as needed.
+
+    {Stored Context Information}: We track high-level project info (e.g., list of modules, architecture diagrams, coding standards) and task-specific context (e.g., which files have been processed, their metadata status). We also log conversation history for interactive sessions: for instance, if the system has asked the user clarifying questions, those Q\&As are stored. Key pieces like ``latest commit ID'' or ``last function translation outcome'' become part of a long-term memory.
+
+    {Querying Context}: When framing a prompt, MigrateX selectively retrieves relevant context. We may include recent changes, related code files, or user instructions (e.g., ``the developer preferred variable names with prefix old\_''). This is done via RAG-like retrieval or simple heuristics: for example, if translating function foo, we fetch foo’s documentation from metadata or any previous translations of foo into other languages.
+
+    {Saving Model Tokens \& Preventing Loss}: Because LLMs have limited context windows, we periodically compress or summarize context. For example, after processing a large file, we generate a brief summary (``File X translated; encountered API Y usage'') and store it in metadata, while archiving the full details externally. When the conversation grows long, we might discard low-level chatter (like intermediate debug attempts) and keep only essential facts. In some implementations, we maintain a rolling context window: the most recent and relevant tokens are kept in active memory, older context is stored in vector memory for retrieval if needed. This approach of summarizing and selectively recalling prevents token overflow while preserving critical information.
+
+    {Balanced Context Management}: By structuring context as both short-term (immediate task) and long-term (project metadata, human preferences), MigrateX ensures the LLM has just enough information to stay coherent without exceeding limits. If context seems at risk of loss (e.g., very long chats), the system automatically summarizes and trims, alerting the user as needed.
+
+    We version embeddings to allow rollback if retrieval biases drift over time. After retrieval, when the LLM produces output, human reviewers can rate the relevance of the retrieved context (e.g., ``this example was helpful'' or not). Positive feedback can trigger the system to index the new migration result back into the vector store, enriching the corpus. If a retrieved example was unhelpful, we may drop it or adjust embeddings. Over time, the corpus evolves with human-in-the-loop refinement.
 
 \textbf{Motivation}: RAG drastically improves translation quality while cutting token usage by up to 80\%.
-
-We version embeddings to allow rollback if retrieval biases drift over time.
 
 \subsection{LLM Translation and Post-Processing}
     
@@ -362,7 +351,7 @@ We version embeddings to allow rollback if retrieval biases drift over time.
         \draw[arrow] (complex) -- (large);
         
         \end{tikzpicture}
-        \caption{\textbf{Model selection decision flow optimized for two-column paper layout.}}
+        \caption{{Model selection decision flow optimized for two-column paper layout.}}
         \label{fig:model_selection_compact}
         \end{figure}
         
@@ -376,34 +365,24 @@ The chunk is translated using LLMs guided by few-shot examples. Enhancements inc
     \item Model selection by confidence score (e.g., GPT-3.5 vs GPT-4).
 \end{itemize}
 
-The translated target-language IR is emitted back to source code. Static analysis (e.g., Clippy, go vet) and formatters (e.g., \texttt{gofmt}, \texttt{rustfmt}) are applied.
+The translated target-language is emitted back to source code. Static analysis (e.g., Clippy, go vet) and formatters (e.g., \texttt{gofmt}, \texttt{rustfmt}) are applied.
 MigrateX uses careful prompt templates at each stage to guide the LLM. Prompts vary depending on outcomes: translation requests, error corrections, and test-driven fixes. We maintain separate prompt formats for success and failure scenarios. Generally, we employ a system message (setting the task) plus user messages with the specific code and instructions.
 
-\begin{itemize}
-    \item \textbf{Successful Translation}: The initial prompt instructs the model to translate or refactor code. For example: ``Translate the following function from Python to TypeScript, preserving its behavior and variable names. Include any necessary type annotations.'' We include the source code and any relevant comments from metadata. If needed, we give a few-shot example of a simple translation. When the LLM returns code, we proceed to validation steps.
+    {Iterative Process}: Each prompt is a controlled narrative that either requests code generation or debugging. By including the exact context (code, error messages, failing tests), MigrateX steers the model to make precise repairs. We often iterate: if the first fix still fails, we prompt again with additional hints (e.g., highlighting a different line), ensuring robust correction. An Explicit Error Handling Layer catches missing type declarations, invalid symbol references, or compilation breakages early.
 
-    \item \textbf{Syntax Errors}: If the model’s output has syntax issues, we automatically trigger a debugging prompt. A prompt might say: ``The following output has a syntax error (see highlighted): [bad code snippet]. Please correct the syntax error and provide the fixed code.'' According to best practices, explicitly asking ``please debug this code'' can get the LLM to fix syntax and minor logic problems. The correction is then recompiled or rechecked.
-
-    \item \textbf{Compilation Failures}: For compilation or runtime errors, we supply the LLM with the error message and context. For instance: ``The compiled code failed with error: TypeError: x is undefined. Given the previous code and this error, suggest a fix.'' We ensure the model sees the failing line or type information. This targeted prompt often yields the necessary change. If the model output compiles cleanly, we continue \cite{deligiannis2023fixing}.
-
-    \item \textbf{Test Failures}: When unit tests or integration tests fail, the prompt includes test case summaries. Example: ``These tests are failing (shown below). Find and fix the bug in the function that causes the failure.'' We insert the relevant test case, expected output, and actual output in the prompt. This guides the model to reason about why the code failed a particular assertion. After fixing, we re-run tests.
-
-    \item \textbf{Iterative Process}: Each prompt is a controlled narrative that either requests code generation or debugging. By including the exact context (code, error messages, failing tests), MigrateX steers the model to make precise repairs. We often iterate: if the first fix still fails, we prompt again with additional hints (e.g., highlighting a different line), ensuring robust correction. An Explicit Error Handling Layer catches missing type declarations, invalid symbol references, or compilation breakages early.
-
-    \item \textbf{Model Selection Strategy}: MigrateX dynamically chooses between smaller or larger LLMs to balance cost, speed, and capability. We use heuristics based on code complexity, confidence levels, and task requirements.
+    {Model Selection Strategy}: MigrateX dynamically chooses between smaller or larger LLMs to balance cost, speed, and capability. We use heuristics based on code complexity, confidence levels, and task requirements.
 
     \begin{enumerate}
-        \item \textbf{Complexity Heuristics}: We estimate code complexity via metrics like lines of code, cyclomatic complexity, or nested structures. For trivial tasks (e.g., translating a simple getter function or refactoring one-line arithmetic), we first try a smaller model (e.g., a 7B-parameter code model) for speed. If the code has many dependencies, deep logic, or unusual libraries, we switch to a larger model (e.g., 70B or GPT-4) that has broader knowledge and reasoning ability.
+        \item \textit{Complexity Heuristics}: We estimate code complexity via metrics like lines of code, cyclomatic complexity, or nested structures. For trivial tasks (e.g., translating a simple getter function or refactoring one-line arithmetic), we first try a smaller model (e.g., a 7B-parameter code model) for speed. If the code has many dependencies, deep logic, or unusual libraries, we switch to a larger model (e.g., 70B or GPT-4) that has broader knowledge and reasoning ability.
 
-        \item \textbf{Domain Specificity}: If the task involves domain-specific libraries (e.g., converting a TensorFlow model, or using a rare database API), we prefer a bigger model or one fine-tuned on that domain. Conversely, for generic tasks like converting loops or data types, a smaller specialized model might suffice.
+        \item \textit{Domain Specificity}: If the task involves domain-specific libraries (e.g., converting a TensorFlow model, or using a rare database API), we prefer a bigger model or one fine-tuned on that domain. Conversely, for generic tasks like converting loops or data types, a smaller specialized model might suffice.
 
-        \item \textbf{Confidence Thresholds}: We use the model’s output quality to decide. For instance, we can run multiple completions (an ensemble) and measure consensus or use log-probabilities: if the top token probabilities are very low or the answers vary widely, that signals low confidence. In such cases, we escalate to a larger model or ask the user for clarification. Similarly, if initial tests reveal mistakes, MigrateX will retry the prompt with a larger model.
+        \item \textit{Confidence Thresholds}: We use the model’s output quality to decide. For instance, we can run multiple completions (an ensemble) and measure consensus or use log-probabilities: if the top token probabilities are very low or the answers vary widely, that signals low confidence. In such cases, we escalate to a larger model or ask the user for clarification. Similarly, if initial tests reveal mistakes, MigrateX will retry the prompt with a larger model.
 
-        \item \textbf{Cost and Latency}: In batch operations, we might greedily use smaller models for the bulk of work, then reserve the larger, more expensive model for final passes or the most critical modules. The system tracks usage and applies budgets (e.g., ``no more than N queries to GPT-4 per hour'').
+        \item \textit{Cost and Latency}: In batch operations, we might greedily use smaller models for the bulk of work, then reserve the larger, more expensive model for final passes or the most critical modules. The system tracks usage and applies budgets (e.g., ``no more than N queries to GPT-4 per hour'').
 
-        \item \textbf{Adaptive Re-selection}: During a single session, we might start with a medium model; if it handles the first few files correctly, we stick with it. But if it starts producing errors, we dynamically switch. This could be automated by monitoring error rates or user feedback.
+        \item \textit{Adaptive Re-selection}: During a single session, we might start with a medium model; if it handles the first few files correctly, we stick with it. But if it starts producing errors, we dynamically switch. This could be automated by monitoring error rates or user feedback.
     \end{enumerate}
-\end{itemize}
 
 \textbf{Motivation}: Early detection of defects saves costlier repairs later.
 
@@ -451,18 +430,18 @@ Testing proceeds in parallel:
 Each chunk’s tests are executed inside sandboxed containers.
 MigrateX builds a comprehensive testing framework around migrated code. It combines automated test generation with inferred testing and rigorous execution checks. The goal is to verify semantic equivalence and catch edge cases.
 
-\begin{itemize}
-    \item \textbf{Automated Test Generation}: We use the LLM to create unit tests based on code semantics and docs. For example, given a function signature and comment, the model can generate corresponding test inputs. Recent studies show LLMs can achieve high coverage when prompted properly. We may provide the LLM with function docstrings or examples of expected behavior, then ask ``generate unit tests''.
 
-    \item \textbf{Inferred Tests}: Beyond AI-generated tests, we algorithmically infer tests to cover missing branches. This might involve using static analysis to identify conditions (e.g., ``if-else'', loops), then creating input values that trigger each branch. We also include boundary values (like 0, negative numbers, empty strings) automatically. These inferred tests help estimate coverage and expose subtle faults not covered by initial examples.
+     {Automated Test Generation}: We use the LLM to create unit tests based on code semantics and docs. For example, given a function signature and comment, the model can generate corresponding test inputs. Recent studies show LLMs can achieve high coverage when prompted properly. We may provide the LLM with function docstrings or examples of expected behavior, then ask ``generate unit tests''.
 
-    \item \textbf{Coverage Estimation}: We integrate coverage tools (e.g., gcov, JaCoCo, coverage.py) to measure how much of the code is exercised by the tests. Metrics like line, branch, and function coverage are computed. According to recent evaluations, coverage is a key effectiveness metric for test generation. We set thresholds (e.g., ``cover 80\% of branches'') as a quality criterion. If coverage is low, we prompt for more tests or refine existing ones.
+     {Inferred Tests}: Beyond AI-generated tests, we algorithmically infer tests to cover missing branches. This might involve using static analysis to identify conditions (e.g., ``if-else'', loops), then creating input values that trigger each branch. We also include boundary values (like 0, negative numbers, empty strings) automatically. These inferred tests help estimate coverage and expose subtle faults not covered by initial examples.
 
-    \item \textbf{Sandbox Execution}: All generated or migrated code runs in a secured sandbox environment. This means containers or VMs with strict timeouts, memory limits, and no network access. Each test execution is isolated to prevent side effects. For example, we may use Docker or a jailed Python subprocess to safely run arbitrary code. If any test hangs or exceeds a limit, we abort that run and record an error.
+     {Coverage Estimation}: We integrate coverage tools (e.g., gcov, JaCoCo, coverage.py) to measure how much of the code is exercised by the tests. Metrics like line, branch, and function coverage are computed. According to recent evaluations, coverage is a key effectiveness metric for test generation. We set thresholds (e.g., ``cover 80\% of branches'') as a quality criterion. If coverage is low, we prompt for more tests or refine existing ones.
 
-    \item \textbf{Delta Testing}: A key check is delta testing: running the same test suite on both the original source code and the migrated target code, and comparing results. Ideally, for each input, the outputs match or are functionally equivalent. Any discrepancy flags a potential migration error. This acts as an end-to-end regression check. If delta testing reveals differences, we log which tests failed in the new code, then feed those back into the debugging prompt cycle.
+     {Sandbox Execution}: All generated or migrated code runs in a secured sandbox environment. This means containers or VMs with strict timeouts, memory limits, and no network access. Each test execution is isolated to prevent side effects. For example, we may use Docker or a jailed Python subprocess to safely run arbitrary code. If any test hangs or exceeds a limit, we abort that run and record an error.
 
-    \item \textbf{Test Execution Flow}:
+     {Delta Testing}: A key check is delta testing: running the same test suite on both the original source code and the migrated target code, and comparing results. Ideally, for each input, the outputs match or are functionally equivalent. Any discrepancy flags a potential migration error. This acts as an end-to-end regression check. If delta testing reveals differences, we log which tests failed in the new code, then feed those back into the debugging prompt cycle.
+
+     {Test Execution Flow}:
     \begin{enumerate}
         \item Generate initial tests (AI + inferred).
         \item Run tests on original code to establish expected outputs.
@@ -473,9 +452,8 @@ MigrateX builds a comprehensive testing framework around migrated code. It combi
     \end{enumerate}
 
     This architecture ensures the migrated system is thoroughly validated. It can automatically detect silent logical mismatches (through test diffs) and guide the LLM to remedy them.
-\end{itemize}
 
-Additionally, a \textbf{Test Coverage Estimation} step optionally calculates how much of the original execution paths are exercised, guiding human review prioritization.
+Additionally, a {Test Coverage Estimation} step optionally calculates how much of the original execution paths are exercised, guiding human review prioritization.
 
 \textbf{Motivation}: Behavioral validation is mandatory to guarantee safe translations.
 
@@ -485,33 +463,29 @@ Chunks failing test execution or static validation are sent for human review. Co
 
 Robust error handling is built into every stage of MigrateX to catch and repair partial failures early. The design follows a fail-fast, iterative repair approach.
 
-\begin{itemize}
-    \item \textbf{Early Detection}: Each pipeline component validates its output. For example, the syntax checker flags parsing failures immediately. The compiler runner stops on compile-time errors, recording the error type and location. The test harness throws exceptions on runtime faults. At each check, if there’s a failure, the system halts further downstream work on that unit.
+{Early Detection}: Each pipeline component validates its output. For example, the syntax checker flags parsing failures immediately. The compiler runner stops on compile-time errors, recording the error type and location. The test harness throws exceptions on runtime faults. At each check, if there’s a failure, the system halts further downstream work on that unit.
     
-    \item \textbf{Structured Logging}: When an error is detected, it is logged in detail (error type, message, code snippet, metadata ID). This log is attached to the metadata for that file. Upstream components (e.g. the orchestrator) see the log and decide the next action. For instance, a syntax error log triggers the syntax-fix prompt stage; a null-pointer exception during tests triggers a test-debug prompt.
+{Structured Logging}: When an error is detected, it is logged in detail (error type, message, code snippet, metadata ID). This log is attached to the metadata for that file. Upstream components (e.g. the orchestrator) see the log and decide the next action. For instance, a syntax error log triggers the syntax-fix prompt stage; a null-pointer exception during tests triggers a test-debug prompt.
 
-    \item \textbf{Graceful Fallbacks}: If an automated fix attempt still fails after a couple of retries, MigrateX falls back gracefully. This might involve: abandoning the automatic route (and flagging for manual intervention), simplifying the task (e.g. break a large function into smaller chunks), or reverting the code to an earlier version. For example, if the model cannot resolve a type mismatch, the system might leave a TODO comment in the code and continue with other files.
+{Graceful Fallbacks}: If an automated fix attempt still fails after a couple of retries, MigrateX falls back gracefully. This might involve: abandoning the automatic route (and flagging for manual intervention), simplifying the task (e.g. break a large function into smaller chunks), or reverting the code to an earlier version. For example, if the model cannot resolve a type mismatch, the system might leave a TODO comment in the code and continue with other files.
 
-    \item \textbf{Partial Success Propagation}: Sometimes only part of a file can be migrated automatically. The system captures these ``partial successes'' and includes them in the output with annotations. For instance, if 90\% of methods in a class were successfully converted but a few stuck, the converted code is output (for review) and the missing parts are isolated for special handling.
+{Partial Success Propagation}: Sometimes only part of a file can be migrated automatically. The system captures these ``partial successes'' and includes them in the output with annotations. For instance, if 90\% of methods in a class were successfully converted but a few stuck, the converted code is output (for review) and the missing parts are isolated for special handling.
 
-    \item \textbf{Error Escalation}: Critical failures that may indicate systemic issues (e.g. failing to parse any file in a directory) trigger alerts. The system might pause and notify engineers. Lesser errors are propagated as warnings in metadata (e.g. ``LLM response uncertain'') to inform later stages.
+{Error Escalation}: Critical failures that may indicate systemic issues (e.g. failing to parse any file in a directory) trigger alerts. The system might pause and notify engineers. Lesser errors are propagated as warnings in metadata (e.g. ``LLM response uncertain'') to inform later stages.
 
-    \item \textbf{Iterative Repair}: If an error occurs, the pipeline loops back: e.g. on compile errors, it re-invokes the LLM with the error context; on test failures, it re-invokes the test-fix prompt. This repeats until either success or a maximum retry count is reached. By catching errors immediately and invoking corrective subprocesses, the pipeline repairs itself as much as possible.
-
+{Iterative Repair}: If an error occurs, the pipeline loops back: e.g. on compile errors, it re-invokes the LLM with the error context; on test failures, it re-invokes the test-fix prompt. This repeats until either success or a maximum retry count is reached. By catching errors immediately and invoking corrective subprocesses, the pipeline repairs itself as much as possible.
     In essence, MigrateX’s error handling is proactive: it anticipates failures by design (e.g. always checking syntax) and systematically addresses them. This minimizes silent propagation of bugs into later stages and maximizes automated recovery, reserving manual effort only for truly unresolvable cases.
-
     MigrateX is designed to improve over time via a continuous learning pipeline that incorporates human review and updates the system.
 
-    \item \textbf{Human Review}: After automated migration and testing, results (especially failure cases) are flagged for human developer review. The reviewer may correct code, adjust tests, or refine metadata. Each human action is captured as feedback. For example, if a user renames a function in the final code, that renaming is recorded.
+{Human Review}: After automated migration and testing, results (especially failure cases) are flagged for human developer review. The reviewer may correct code, adjust tests, or refine metadata. Each human action is captured as feedback. For example, if a user renames a function in the final code, that renaming is recorded.
 
-    \item \textbf{Correction Storage}: All manual corrections and feedback are stored in a structured format. This might include diffs to the code, notes on why a translation was incorrect, or updated prompts that worked better. These become ground truth examples. Over time, we accumulate a dataset of ``model input $\rightarrow$ desired output'' pairs.
+{Correction Storage}: All manual corrections and feedback are stored in a structured format. This might include diffs to the code, notes on why a translation was incorrect, or updated prompts that worked better. These become ground truth examples. Over time, we accumulate a dataset of ``model input $\rightarrow$ desired output'' pairs.
 
-    \item \textbf{Metadata Versioning}: Whenever the system or user alters metadata schema or content, we version it. For instance, if we add a new metadata field (like ``performance metric''), we tag that update in a version control for the metadata repository. This way, historical migrations still interpret old metadata correctly, and updates can be rolled forward consistently.
+{Metadata Versioning}: Whenever the system or user alters metadata schema or content, we version it. For instance, if we add a new metadata field (like ``performance metric''), we tag that update in a version control for the metadata repository. This way, historical migrations still interpret old metadata correctly, and updates can be rolled forward consistently.
 
-    \item \textbf{Retraining/Fine-tuning}: Periodically, we use the collected corrections to fine-tune models or update embeddings. If the system supports incremental training (or if we have an in-house model), we may fine-tune on the new examples of correct migrations. At minimum, we refresh the RAG index with newly approved code snippets and docs.
+{Retraining/Fine-tuning}: Periodically, we use the collected corrections to fine-tune models or update embeddings. If the system supports incremental training (or if we have an in-house model), we may fine-tune on the new examples of correct migrations. At minimum, we refresh the RAG index with newly approved code snippets and docs.
 
-    \item \textbf{Feedback Loop Example}: Suppose a function translation consistently fails a specific pattern. Once identified, we either adjust the prompt templates or fine-tune the LLM on that pattern. In this way, the system ``learns'' from mistakes. Over time, the corrections refine the model’s performance and the underlying knowledge corpus.
-\end{itemize}
+{Feedback Loop Example}: Suppose a function translation consistently fails a specific pattern. Once identified, we either adjust the prompt templates or fine-tune the LLM on that pattern. In this way, the system ``learns'' from mistakes. Over time, the corrections refine the model’s performance and the underlying knowledge corpus.
 
 
 This continuous loop—automated output, human evaluation, data collection, model or prompt refinement—ensures that MigrateX gets better with use. It mirrors techniques like reinforcement learning from human feedback (RLHF), but here focused on code tasks. Through this cycle, common edge cases and project-specific conventions become ingrained in the system.
@@ -521,20 +495,10 @@ This continuous loop—automated output, human evaluation, data collection, mode
 
 \subsection{Directory Mapping and Reassembly}
 
-Finally, chunks are placed into a mapped directory structure, and build configurations (e.g., \texttt{Cargo.toml}, \texttt{go.mod}) are updated accordingly.
-
-Before full module reassembly, a lightweight \textbf{Chunk Merge Validator} checks cross-chunk consistency: e.g., ensuring functions calling across chunk boundaries still match in signatures and types.
+Finally, chunks are placed into a mapped directory structure, and build configurations (e.g., \texttt{Cargo.toml}, \texttt{go.mod}) are updated accordingly. Before full module reassembly, a lightweight {Chunk Merge Validator} checks cross-chunk consistency: e.g., ensuring functions calling across chunk boundaries still match in signatures and types.
 
 \textbf{Motivation}: Protect against subtle integration regressions during final merging.
 
-\textbf{Execution}:
-- Sandbox container spins up; unit test passes.
-
-\textbf{Reassembly}:
-- Places \texttt{add.rs} inside correct module hierarchy, updates \texttt{Cargo.toml}.
-
-Thus, even this simple case illustrates how every system layer contributes to high-fidelity, low-cost, safe translation---at industrial scale.
-    
     \section{Results and Analysis}
     \label{sec:results}
     
