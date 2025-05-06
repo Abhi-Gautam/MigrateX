@@ -68,7 +68,7 @@
 \fontsize{9}{11}\selectfont
 \maketitle
         \begin{abstract}
-        Enterprises continually face the daunting task of migrating legacy code—rewriting, refactoring, and modernizing systems written in C/C++ or Java/.NET to safer, more productive ecosystems such as Rust and Go. Traditional, rule-based transpilers (e.g. C2Rust, BindGen) excel at syntactic fidelity but produce largely unsafe or unidiomatic output, while naïve LLM "prompt-and-pray" approaches suffer from hallucinations, context-loss, and "laziness" on large modules \cite{tang2023large}. Meanwhile, real-world evidence shows the enormous upside of AI-driven migration: Amazon's Q Developer agent migrated 30,000 Java applications—saving some 4,500 developer-years and \$260 million annually \cite{aws-genai-director}. To bridge this gap, we present a comprehensive, language-agnostic framework that tightly integrates compiler-grade IR/AST analysis, fine-grained function-level chunking, Retrieval-Augmented Generation (RAG), LLM ensembles, rule-based fallbacks, and automated test generation and verification. Our system guarantees that each migrated "unit of functionality" is accompanied by generated or translated tests, is validated in isolation, and only then re-integrated into its original directory structure. By combining human-verified seed migrations, dynamic RAG retrieval, and iterative program repair, we achieve high semantic fidelity, strong safety guarantees, and up to 80\% reduction in LLM tokens per chunk—making large-scale code modernization tractable and cost-effective.
+        Enterprises continually face the daunting task of migrating legacy code—rewriting, refactoring, and modernizing systems written in C/C++ or Java/.NET to safer, more productive ecosystems such as Rust and Go. Traditional, rule-based transpilers (e.g. C2Rust, BindGen) excel at syntactic fidelity but produce largely unsafe or unidiomatic output, while naïve LLM ``prompt-and-pray'' approaches suffer from hallucinations, context-loss, and ``laziness'' on large modules \cite{tang2023large}. Meanwhile, real-world evidence shows the enormous upside of AI-driven migration: Amazon's Q Developer agent migrated 30,000 Java applications—saving some 4,500 developer-years and \$260 million annually \cite{aws-genai-director}. To bridge this gap, we present a comprehensive, language-agnostic framework that tightly integrates compiler-grade IR/AST analysis, fine-grained function-level chunking, Retrieval-Augmented Generation (RAG), LLM ensembles, rule-based fallbacks, and automated test generation and verification. Our system guarantees that each migrated ``unit of functionality'' is accompanied by generated or translated tests, is validated in isolation, and only then re-integrated into its original directory structure. By combining human-verified seed migrations, dynamic RAG retrieval, and iterative program repair, we achieve high semantic fidelity, strong safety guarantees, and up to 80\% reduction in LLM tokens per chunk—making large-scale code modernization tractable and cost-effective.
         \end{abstract}
 
 \vspace{1em}
@@ -125,7 +125,7 @@ MigrateX proposes a fundamentally different, more principled framework for large
 
 At the core of MigrateX is a compiler-grade analysis engine that parses source projects into intermediate representations (IRs) and abstract syntax trees (ASTs), extracts control-flow and data-flow graphs, and annotates all functions, classes, and modules with dependency metadata. Codebases are then segmented into ``units of functionality''---self-contained, dependency-aware chunks designed to fit comfortably within LLM context windows. This segmentation is not performed naively by line count, but dynamically adjusted based on static analysis and empirical LLM behavior to maximize translation quality and minimize context loss.
 
-Instead of relying on raw prompting, MigrateX grounds the LLM via a retrieval-augmented generation (RAG) layer. Every IR chunk is embedded and indexed in a vector database, alongside a growing corpus of human-verified past migrations. When translating a new chunk, MigrateX retrieves semantically similar examples, using them to construct few-shot prompts that guide the LLM toward semantically consistent, idiomatic outputs. This retrieval architecture ensures that the LLM operates with contextual examples tuned to the specific migration at hand, sharply reducing hallucinations and token costs.
+Instead of relying on raw prompting, MigrateX grounds the LLM via a retrieval-augmented generation (RAG) layer. Every self contained module is embedded and indexed in a vector database, alongside a growing corpus of human-verified past migrations. When translating a new chunk, MigrateX retrieves semantically similar examples, using them to construct few-shot prompts that guide the LLM toward semantically consistent, idiomatic outputs. This retrieval architecture ensures that the LLM operates with contextual examples tuned to the specific migration at hand, sharply reducing hallucinations and token costs.
 
 MigrateX treats testing and verification as first-class citizens. For every chunk, it generates or migrates associated unit tests using a language-agnostic test intermediate representation. These tests are executed in isolated environments before any merged reintegration occurs. If a chunk fails semantic or behavioral verification, it is flagged for human intervention. Critically, human-reviewed or corrected translations are re-embedded into the vector database, enabling the RAG system to improve continuously over time \cite{silva2023repairllama} \cite{bhattarai2024enhancing}.
 
@@ -136,21 +136,19 @@ Prior systems, even those integrating LLMs into migration workflows, have focuse
 
 \section{Challenges}
 
-\begin{itemize}
-  \item \textbf{Hallucinations in Large Files}: LLMs may generate code that appears plausible but is incorrect or non-existent, especially when processing extensive codebases. This phenomenon, known as hallucination, can lead to the inclusion of unreachable code, syntactic errors, logical errors, or security vulnerabilities. Such issues are exacerbated in large files where the model's context window is insufficient to capture all relevant dependencies, leading to incomplete or erroneous translations \cite{window} \cite{token} \cite{levy2024same}.
+   \textit{Hallucinations in Large Files}: LLMs may generate code that appears plausible but is incorrect or non-existent, especially when processing extensive codebases. This phenomenon, known as hallucination, can lead to the inclusion of unreachable code, syntactic errors, logical errors, or security vulnerabilities. Such issues are exacerbated in large files where the model's context window is insufficient to capture all relevant dependencies, leading to incomplete or erroneous translations \cite{window} \cite{token} \cite{levy2024same}.
 
-  \item \textbf{Handling Functions Spread Across Multiple Files}: In real-world projects, functions and their dependencies are often distributed across various files. LLMs, limited by their context window, may lack access to all necessary information during translation. This can result in missing dependencies, incorrect references, or compilation failures due to unresolved references \cite{eniser2024towards}.
+   \textit{Handling Functions Spread Across Multiple Files}: In real-world projects, functions and their dependencies are often distributed across various files. LLMs, limited by their context window, may lack access to all necessary information during translation. This can result in missing dependencies, incorrect references, or compilation failures due to unresolved references \cite{eniser2024towards}.
 
-  \item \textbf{Adherence to In-House Coding Standards}: Organizations often have proprietary coding standards and conventions. LLMs, trained on diverse datasets, may not inherently conform to these specific guidelines, leading to non-compliance, inconsistencies, and increased review effort to ensure adherence to organizational standards.
+   \textit{Adherence to In-House Coding Standards}: Organizations often have proprietary coding standards and conventions. LLMs, trained on diverse datasets, may not inherently conform to these specific guidelines, leading to non-compliance, inconsistencies, and increased review effort to ensure adherence to organizational standards.
 
-  \item \textbf{Language-Specific Constructs and Paradigms}: Different programming languages offer unique features and paradigms. For instance, concurrency models and memory management techniques vary between languages like C++, Rust, and Go. LLMs may struggle to accurately translate these constructs, leading to incorrect implementations, performance issues, or semantic errors \cite{zhang2023ownership}.
+   \textit{Language-Specific Constructs and Paradigms}: Different programming languages offer unique features and paradigms. For instance, concurrency models and memory management techniques vary between languages like C++, Rust, and Go. LLMs may struggle to accurately translate these constructs, leading to incorrect implementations, performance issues, or semantic errors \cite{zhang2023ownership}.
 
-  \item \textbf{Organizing Translated Code into Project Structure}: Post-translation, integrating the generated code into the existing project structure poses challenges such as determining appropriate file and directory placement, ensuring seamless integration with existing modules, and adapting the code to work with the project's build and deployment systems.
+   \textit{Organizing Translated Code into Project Structure}: Post-translation, integrating the generated code into the existing project structure poses challenges such as determining appropriate file and directory placement, ensuring seamless integration with existing modules, and adapting the code to work with the project's build and deployment systems.
 
-  \item \textbf{Absence of Test Cases and Verification Challenges}: Many legacy systems lack comprehensive test suites, complicating the verification of translated code. This absence can lead to unverified behavior, increased reliance on manual testing, and a higher likelihood of introducing undetected bugs during translation.
+   \textit{Absence of Test Cases and Verification Challenges}: Many legacy systems lack comprehensive test suites, complicating the verification of translated code. This absence can lead to unverified behavior, increased reliance on manual testing, and a higher likelihood of introducing undetected bugs during translation.
 
-  \item \textbf{Computational and Financial Costs}: Utilizing LLMs for code translation entails significant computational resources, including high-performance hardware and longer processing times for extensive codebases. These factors can lead to substantial financial implications, limiting the scalability and feasibility of LLM-based code translation in resource-constrained environments.
-\end{itemize}
+   \textit{Computational and Financial Costs}: Utilizing LLMs for code translation entails significant computational resources, including high-performance hardware and longer processing times for extensive codebases. These factors can lead to substantial financial implications, limiting the scalability and feasibility of LLM-based code translation in resource-constrained environments.
 
 \section{System Overview}
 
@@ -175,11 +173,11 @@ MigrateX is structured as a multi-stage orchestration pipeline designed to handl
 The design of MigrateX is governed by the following principles:
 
 \begin{itemize}
-    \item \textbf{Semantic Preservation}: Preserve program semantics across translation boundaries, not just syntax.
-    \item \textbf{Cost Efficiency}: Minimize token usage and expensive LLM calls via retrieval-augmented techniques and chunking.
-    \item \textbf{Scalability}: Modularize translation into independent, self-verifying units that can scale to large repositories.
-    \item \textbf{Continuous Improvement}: Use human-in-the-loop feedback to incrementally strengthen the retrieval corpus and reduce future error rates.
-    \item \textbf{Fail-Safe Defaults}: Detect translation failures early via static analysis, coverage estimation, and semantic round-trip checks, rather than propagating errors downstream \cite{ibrahimzada2024program}.
+    \item \textit{Semantic Preservation}: Preserve program semantics across translation boundaries, not just syntax.
+    \item \textit{Cost Efficiency}: Minimize token usage and expensive LLM calls via retrieval-augmented techniques and chunking.
+    \item \textit{Scalability}: Modularize translation into independent, self-verifying units that can scale to large repositories.
+    \item \textit{Continuous Improvement}: Use human-in-the-loop feedback to incrementally strengthen the retrieval corpus and reduce future error rates.
+    \item \textit{Fail-Safe Defaults}: Detect translation failures early via static analysis, coverage estimation, and semantic round-trip checks, rather than propagating errors downstream \cite{ibrahimzada2024program}.
 \end{itemize}
 
 \subsection{Source Repository and Ingestion}
@@ -188,18 +186,20 @@ The pipeline begins by cloning the target source repository, which may include c
 
 ASTs are extracted using language-specific front-ends (Clang for C++, Roslyn for .NET, JavaParser for Java), capturing the full syntactic structure. CFGs and DFGs are generated for each file to understand execution flow and data dependencies as discussed in \cite{illinois-ir}.
 
-\noindent Our approach emphasizes module slicing and extraction to create self-contained units of code that can be independently translated and later merged back into the original repository. This technique allows us to modularize the translation process, focusing on isolated blocks of functionality that are easy to work with and test.
+Our approach emphasizes module slicing and extraction to create self-contained units of code that can be independently translated and later merged back into the original repository. This technique allows us to modularize the translation process, focusing on isolated blocks of functionality that are easy to work with and test.
 
-\medskip \noindent\textbf{Module Slicing and Extraction:} \begin{quote} The goal is to slice the source code into smaller, logical units such as functions, methods, or classes, which can then be independently translated and tested. This process ensures that each unit remains isolated, preserving its semantics and allowing for clean and consistent transformations across languages. \end{quote}
-\medskip \noindent By focusing on module extraction, we create a set of smaller, self-contained code units that can be translated in isolation, making the entire pipeline more manageable and flexible. These modules are derived from the AST, CFG, and DFG representations to ensure each unit is syntactically and semantically correct before translation. This method also facilitates better error handling, as each module can be processed independently, and failures can be isolated without disrupting the entire codebase.
-\medskip \noindent This approach is particularly useful for projects with large codebases or when dealing with complex dependencies. By breaking down the code into smaller, independently translatable units, we minimize the risk of introducing errors during translation and enable easy reintegration after translation is complete.
+The goal is to slice the source code into smaller, logical units such as functions, methods, or classes, which can then be independently translated and tested. This process ensures that each unit remains isolated, preserving its semantics and allowing for clean and consistent transformations across languages.
+
+By focusing on module extraction, we create a set of smaller, self-contained code units that can be translated in isolation, making the entire pipeline more manageable and flexible. These modules are derived from the AST, CFG, and DFG representations to ensure each unit is syntactically and semantically correct before translation. This method also facilitates better error handling, as each module can be processed independently, and failures can be isolated without disrupting the entire codebase.
+This approach is particularly useful for projects with large codebases or when dealing with complex dependencies. By breaking down the code into smaller, independently translatable units, we minimize the risk of introducing errors during translation and enable easy reintegration after translation is complete.
 
 \medskip
 \noindent\textbf{Comparison of representations:}
 \begin{table*}[htbp]
 \begin{quote}
-\begin{tabular}{p{4cm}p{5cm}p{6cm}}
+\begin{tabular}{p{3cm}p{5cm}p{7cm}}
 \bf Representation & \bf What it captures & \bf Why it matters for translation \\\hline
+\\
 CFG & Control-flow edges between basic blocks  
  & Good for slicing and determining execution order, but loses type, syntax and data dependencies—insufficient to reconstruct valid code. \\
 AST & Full parse tree plus semantic annotations (types, scopes, symbol‐tables)  
@@ -216,43 +216,28 @@ Module Extraction & Self-contained logical units like functions or classes
 \noindent
 CFGs are indispensable for identifying basic-block boundaries and control dependencies, but by themselves they strip away the very syntax and typing information that an LLM needs to emit safe, idiomatic code in Rust or Go.  ASTs preserve that syntax and semantic detail—such as struct definitions, template parameters, symbol scopes, and macro uses—making them essential for reconstructing valid declarations and expressions. However, ASTs vary greatly between source and target languages, so we lower both into an MLIR-style unified IR: a common intermediate form with explicit operations, normalized type representations, and metadata annotations that guide the LLM and downstream passes uniformly.  
 
-By combining module slicing and extraction with language-specific ASTs and CFGs, we ensure that: 
-\begin{itemize} 
-    \item Each code unit is isolated and self-contained, preserving its context for precise translation. 
-    \item Complex codebases are broken down into smaller, manageable modules, reducing the risk of errors during the translation process. 
-    \item Translations can be performed independently, allowing for easier testing and integration later on. 
-\end{itemize}
+By combining module slicing and extraction with language-specific ASTs and CFGs we ensure, 
+Each code unit is isolated and self-contained, preserving its context for precise translation. 
+Complex codebases are broken down into smaller, manageable modules, reducing the risk of errors during the translation process. 
+Translations can be performed independently, allowing for easier testing and integration later on. 
 
 This multi-representation approach yields far more reliable, semantically accurate translations than feeding CFGs alone to an LLM or relying solely on AST-to-text generation.  
 
 \textbf{Motivation}: By focusing on module slicing and extraction rather than relying solely on CFGs or a unified IR, we can handle each code unit independently, preserving its semantics and structure for better translation quality. This reduces the complexity of large-scale transformations, providing a more scalable and maintainable translation pipeline.
 
-\begin{figure*}[htbp]
-    \centering
-    \begin{minipage}{0.48\textwidth}
+\begin{figure*}[t]
         \centering
-        \includegraphics[width=\textwidth]{figures/source_cpp.png}
+        \includegraphics[width=\textwidth]{figures/cfg.png}
         \caption{\textbf{The source C++ function and translated Rust function.}}
         \label{fig:translate-overview1}
-    \end{minipage}%
-    \hfill
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/unified_ir.png}
-        \caption{\textbf{AST, CFG and IR representations of the same function \cite{illinois-ir}.}}
-        \label{fig:translate-overview2}
-    \end{minipage}
 \end{figure*}
 
 \subsection{Module Extraction and Normalization}
 
 Parsed programs are converted into self-contained modules. This captures:
-
-\begin{itemize}
-    \item Functions, classes, modules.
-    \item Types and their relationships.
-    \item Symbol tables, dependencies, annotations (e.g., original file paths).
-\end{itemize}
+Functions, classes, modules,
+Types and their relationships, 
+Symbol tables, dependencies, annotations (e.g., original file paths).
 
 Normalization standardizes type names, cleans inconsistencies, and flattens vendor-specific extensions. Rather than relying on an intermediate representation (IR), we focus on modular units of code that maintain logical integrity across languages. Each module is carefully extracted to ensure it is independent and can later be reintegrated into the target language.
 
@@ -265,13 +250,13 @@ For example, we might record that \texttt{moduleA/foo.cpp} (source path) is mapp
 A robust schema might include:
 
 \begin{itemize}
-    \item \textbf{ID/UUID}: Unique key for the code unit.
-    \item \textbf{Source/Target Paths}: Original and migrated file or module paths (for directory mapping).
-    \item \textbf{Language/Version}: e.g., .NET 7.0 $\rightarrow$ Go 1.18.
-    \item \textbf{Dependencies}: List of imports or calls.
-    \item \textbf{Context Snippet}: A few lines of surrounding code or comments for disambiguation.
-    \item \textbf{Transform Stage}: Marker (parsed, transpiled, tested).
-    \item \textbf{Validation Status}: e.g., ``syntax-checked'', ``tests-passed''.
+    \item \textit{ID/UUID}: Unique key for the code unit.
+    \item \textit{Source/Target Paths}: Original and migrated file or module paths (for directory mapping).
+    \item \textit{Language/Version}: e.g., .NET 7.0 $\rightarrow$ Go 1.18.
+    \item \textit{Dependencies}: List of imports or calls.
+    \item \textit{Context Snippet}: A few lines of surrounding code or comments for disambiguation.
+    \item \textit{Transform Stage}: Marker (parsed, transpiled, tested).
+    \item \textit{Validation Status}: e.g., ``syntax-checked'', ``tests-passed''.
 \end{itemize}
 
 \subsection*{Usage Examples}
@@ -291,22 +276,6 @@ The modules are then segmented into ``units of functionality''---typically, self
 Chunks are sized dynamically to fit comfortably within LLM context windows (~1-2k tokens), balancing completeness with cost control.
 
 At the core of MigrateX is the modular approach that abstracts away language-specific syntax and exposes program semantics. We follow approaches like LLMLift, which instructs LLMs to emit a common module representation, capturing the necessary logic without relying heavily on an intermediate representation (IR). Similarly, recent work shows that leveraging compiler-generated modules as a pivot improves cross-language code translation accuracy. In our system, modules are designed with fields for operators, operands, types, and control flow.
-
-\begin{itemize}
-    \item \textbf{Module Field Design}: The module must capture all relevant syntax categories. Key fields include:
-    \begin{itemize}
-        \item \textbf{NodeType}: The kind of operation (e.g., ``FunctionDef'', ``IfStatement'').
-        \item \textbf{Operands/Args}: References to variables, constants, or child nodes.
-        \item \textbf{Type Annotations}: (optional) Inferred data types.
-        \item \textbf{Metadata tags}: e.g., source code line numbers or original language tokens for traceability.
-    \end{itemize}
-
-    \item \textbf{Cross-language Mapping}: The modules normalize constructs. For example, a Java \texttt{for(int i=0; i<n; i++)} and a Python \texttt{for i in range(n):} both map to a common loop representation like \{op: ``ForLoop'', init: ``i=0'', cond: ``i<n'', update: ``i++''\}. Control-flow nodes (loops, conditionals) and data operations (arithmetic, I/O) are unified, while language-specific details (e.g., Java generics vs. Python dynamic types) are abstracted away or tagged. This normalization lets the same modules inform both analysis and generation phases.
-
-    \item \textbf{Normalization}: To simplify the modules, we strip irrelevant differences. For instance, string concatenation in Java (\texttt{"a"+b}) and .NET (\texttt{String.Concat(a,b)}) would both be represented as \{op: ``StringConcat'', args: \{``a'', ``b''\}\}. We also canonicalize naming (renaming local variables to placeholders if needed) and flatten nested expressions where possible. By working with normalized modules, subsequent prompts and transformations can focus on core logic rather than syntactic quirks.
-\end{itemize}
-
-\textbf{Motivation}: Directly feeding large modules to LLMs causes hallucinations, context loss, and prohibitive token costs.
 
 \subsection{Retrieval-Augmented Generation (RAG) Layer}
 \begin{figure}[htbp]
@@ -341,35 +310,6 @@ Each IR chunk is embedded using CodeBERT or StarEncoder models, and stored in a 
 
 When a chunk is being translated, the system queries the database to retrieve \emph{k} semantically similar examples, which are injected into the LLM prompt as few-shot examples.
 MigrateX uses a Retrieval-Augmented Generation (RAG) subsystem to incorporate external knowledge into translation tasks. RAG combines a vector-based retrieval system with the LLM’s generation abilities, providing grounding information to improve accuracy.
-
-\textbf{Dependency-Grounded Retrieval Workflow}
-\label{subsubsec:grounded-workflow}
-
-To ensure the model only ever sees—and relies on—the exact types and mappers a function needs, we adopt the following retrieval workflow:
-
-\begin{enumerate}
-  \item \textbf{Static Dependency Analysis.}  
-    Parse the function’s AST/CFG to identify all referenced classes, methods, and data types.
-  \item \textbf{Similarity Lookup.}  
-    Issue an embedding query against the FAISS index to fetch only those definitions (e.g.\ DTOs, mappers) that overlap with the function’s dependency set.
-  \item \textbf{Context Injection.}  
-    Prepend the retrieved definitions verbatim as a “ground truth” block in the prompt, guaranteeing consistency.
-  \item \textbf{Prompt Assembly.}  
-    Combine the injected block with the translation task, e.g.:
-    \begin{verbatim}
-    // Injected definitions
-    <class Foo { … }>
-    <mapper Bar → Baz { … }>
-
-    // Task
-    Translate this method, assuming the above classes and mappers...
-    \end{verbatim}
-  \item \textbf{Translation \& Verification.}  
-    Submit to the LLM, then run an automated type-checker against the output to catch any missing or mis-applied mappings.
-\end{enumerate}
-
-This explicit workflow both clarifies the interplay of chunking and retrieval and reassures readers that no extraneous code ever bloats the context window.
-
 
 \begin{itemize}
     \item \textbf{Semantic Embedding Structure}: We maintain a corpus of prior code examples, documentation, and migration notes. Each document (e.g., a code snippet or comment) is converted into embeddings via a semantic model (such as a code-specific encoder). The vector store is organized by context (e.g., by library or feature). For example, functions using a particular framework get similar embeddings. We might embed not only raw code but also structured metadata (like tags or natural language descriptions) so that a single vector query can retrieve both code and docs.
@@ -662,13 +602,24 @@ Thus, even this simple case illustrates how every system layer contributes to hi
     Used when no prior failures are detected.
     
     \begin{tcolorbox}
-    \small
-    \textbf{System:}\\
-    You are an expert software migrator. Translate code faithfully and idiomatically.\\[2pt]
-    \textbf{User:}\\
-    Translate the following C++ function to Rust.\\
-    Preserve public API names and add Rustdoc comments if missing.\\[6pt]
-    \texttt{\textless ORIGINAL\_CPP\_CODE\textgreater}
+        \small
+        \textbf{System:}\\
+        You are an expert software migrator. Translate code faithfully and idiomatically.\\[4pt]
+        \textbf{Context (Module Slice):}\\
+        This function is part of a larger module extracted via CFG-based dependency closure. Only the following slice (leaf node and its dependencies) has been injected as ground truth.\\[4pt]
+        \textbf{Ground Truth (Injected via RAG):}\\
+    \texttt{%
+    // DTO in Module A\\
+    class CustomerDTO;\\[6pt]
+    // Mapper function in Module A\\
+    CustomerDTO mapToCustomerDTO(const Customer\& c);\\[6pt]
+    // Utility in Module D\\
+    std::string formatDate(const std::chrono::system\_clock::time\_point\& tp);%
+    }\\[6pt]
+        \textbf{User:}\\
+        Given the above ground truth context, translate the following C++ function to Rust.\\
+        Preserve public API names and add Rustdoc comments if missing.\\[6pt]
+        \texttt{\textless ORIGINAL\_CPP\_CODE\textgreater}
     \end{tcolorbox}
     
     \noindent\textbf{P2\,---\,Syntax or compiler error repair.}
@@ -809,7 +760,10 @@ MigrateX proposes a new paradigm: combining the generative flexibility of LLMs w
 
 Our architecture explicitly addresses the challenges of hallucination, context fragmentation, directory reconstruction, and validation at scale, setting a foundation for further automation of large-scale codebase modernization. Future work will focus on expanding cross-language coverage, refining long-term context memory systems, and integrating even tighter LLM feedback loops to further reduce human review overhead.
 
-
-\bibliography{figures/references}
+\begingroup
+  \scriptsize
+  \bibliographystyle{plain}
+  \bibliography{figures/references}
+\endgroup
 
 \end{document}
