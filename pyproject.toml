@@ -40,6 +40,7 @@ dependencies = [
     "tree-sitter-java>=0.20.0",
     "tree-sitter-python>=0.20.0",
     "networkx>=3.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
