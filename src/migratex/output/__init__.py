@@ -1,0 +1,1 @@
+# Output management package for MigrateX

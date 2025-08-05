@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from migratex.cli.visualizer import ModuleTreeVisualizer
+from migratex.cli.analyze_command import run_enhanced_analysis
 from migratex.pipeline.orchestrator import MigrationOrchestrator
 from migratex.analysis.language_parser import LanguageParser
 from migratex.analysis.test_extractor import TestExtractor
@@ -302,6 +303,76 @@ def test_extract(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+@app.command()
+def analyze_and_generate(
+    repository_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the source code repository to analyze",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    max_functions: Annotated[
+        int,
+        typer.Option(
+            "--max-functions", "-m",
+            help="Maximum number of functions to analyze (for cost control)",
+        ),
+    ] = 5,
+    coverage_threshold: Annotated[
+        int,
+        typer.Option(
+            "--coverage-threshold", "-t",
+            help="Minimum coverage percentage to skip test generation",
+        ),
+    ] = 80,
+    generate_tests: Annotated[
+        bool,
+        typer.Option(
+            "--generate/--no-generate",
+            help="Generate tests for functions with insufficient coverage",
+        ),
+    ] = True,
+    save_output: Annotated[
+        bool,
+        typer.Option(
+            "--save-output/--no-save-output",
+            help="Save analysis results to organized output directory",
+        ),
+    ] = True,
+) -> None:
+    """🤖 AI-powered code analysis with real-time progress display.
+    
+    This command provides enhanced analysis with:
+    - Real-time progress visualization
+    - AI-powered coverage analysis for each function
+    - Intelligent test generation decisions
+    - Comprehensive reporting and statistics
+    """
+    
+    console.print(Panel.fit(
+        Text("🤖 MigrateX Enhanced Analysis", style="bold magenta"),
+        subtitle="AI-powered coverage analysis with real-time progress",
+    ))
+    
+    try:
+        run_enhanced_analysis(
+            repository_path=str(repository_path),
+            max_functions=max_functions,
+            coverage_threshold=coverage_threshold,
+            generate_tests=generate_tests,
+            save_output=save_output
+        )
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
 
 @app.callback()
 def main(
