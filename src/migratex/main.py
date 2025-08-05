@@ -16,6 +16,15 @@ from migratex.cli.visualizer import ModuleTreeVisualizer
 from migratex.cli.analyze_command import run_enhanced_analysis
 from migratex.cli.module_analyze_command import run_module_based_analysis
 from migratex.cli.translate_command import run_translation_command
+from migratex.cli.knowledge_command import (
+    run_knowledge_add_example_command,
+    run_knowledge_add_style_guide_command,
+    run_knowledge_add_pattern_command,
+    run_knowledge_add_feedback_command,
+    run_knowledge_stats_command,
+    run_knowledge_search_command,
+    run_knowledge_export_command
+)
 from migratex.pipeline.orchestrator import MigrationOrchestrator
 from migratex.analysis.language_parser import LanguageParser
 from migratex.analysis.test_extractor import TestExtractor
@@ -530,6 +539,134 @@ def translate_modules(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+# Knowledge Base Management Commands
+@app.command()
+def knowledge_add_example(
+    source_code: Annotated[str, typer.Option("--source", "-s", help="Source code to add")],
+    target_code: Annotated[str, typer.Option("--target", "-t", help="Target code translation")],
+    source_language: Annotated[str, typer.Option("--source-lang", help="Source language")] = "c",
+    target_language: Annotated[str, typer.Option("--target-lang", help="Target language")] = "rust",
+    description: Annotated[Optional[str], typer.Option("--desc", help="Description of the example")] = None,
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """📝 Add a code translation example to the RAG knowledge base."""
+    
+    run_knowledge_add_example_command(
+        source_code=source_code,
+        target_code=target_code,
+        source_language=source_language,
+        target_language=target_language,
+        description=description,
+        knowledge_base_path=knowledge_base_path
+    )
+
+
+@app.command()
+def knowledge_add_guide(
+    title: Annotated[str, typer.Option("--title", help="Style guide title")],
+    content: Annotated[str, typer.Option("--content", help="Style guide content")],
+    language: Annotated[Optional[str], typer.Option("--language", help="Programming language")] = None,
+    category: Annotated[str, typer.Option("--category", help="Style guide category")] = "general",
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """📋 Add a style guide to the RAG knowledge base."""
+    
+    run_knowledge_add_style_guide_command(
+        title=title,
+        content=content,
+        language=language,
+        category=category,
+        knowledge_base_path=knowledge_base_path
+    )
+
+
+@app.command()
+def knowledge_add_pattern(
+    name: Annotated[str, typer.Option("--name", help="Pattern name")],
+    description: Annotated[str, typer.Option("--description", help="Pattern description")],
+    example_code: Annotated[Optional[str], typer.Option("--example", help="Example code")] = None,
+    language: Annotated[Optional[str], typer.Option("--language", help="Programming language")] = None,
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """🏗️ Add an architectural pattern to the RAG knowledge base."""
+    
+    run_knowledge_add_pattern_command(
+        name=name,
+        description=description,
+        example_code=example_code,
+        language=language,
+        knowledge_base_path=knowledge_base_path
+    )
+
+
+@app.command()
+def knowledge_add_feedback(
+    original_code: Annotated[str, typer.Option("--original", help="Original source code")],
+    generated_translation: Annotated[str, typer.Option("--generated", help="Generated translation")],
+    corrected_translation: Annotated[Optional[str], typer.Option("--corrected", help="Corrected translation")] = None,
+    feedback_text: Annotated[Optional[str], typer.Option("--feedback", help="Human feedback text")] = None,
+    rating: Annotated[Optional[int], typer.Option("--rating", help="Quality rating (1-5)")] = None,
+    source_language: Annotated[str, typer.Option("--source-lang", help="Source language")] = "c",
+    target_language: Annotated[str, typer.Option("--target-lang", help="Target language")] = "rust",
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """💬 Add human feedback to the RAG knowledge base."""
+    
+    run_knowledge_add_feedback_command(
+        original_code=original_code,
+        generated_translation=generated_translation,
+        corrected_translation=corrected_translation,
+        feedback_text=feedback_text,
+        rating=rating,
+        source_language=source_language,
+        target_language=target_language,
+        knowledge_base_path=knowledge_base_path
+    )
+
+
+@app.command()
+def knowledge_stats(
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """📊 Display RAG knowledge base statistics."""
+    
+    run_knowledge_stats_command(knowledge_base_path=knowledge_base_path)
+
+
+@app.command()
+def knowledge_search(
+    query: Annotated[str, typer.Option("--query", "-q", help="Search query")],
+    source_language: Annotated[str, typer.Option("--source-lang", help="Source language")] = "c",
+    target_language: Annotated[str, typer.Option("--target-lang", help="Target language")] = "rust",
+    max_results: Annotated[int, typer.Option("--max", help="Maximum results to show")] = 5,
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """🔍 Search the RAG knowledge base for relevant examples."""
+    
+    run_knowledge_search_command(
+        query=query,
+        source_language=source_language,
+        target_language=target_language,
+        max_results=max_results,
+        knowledge_base_path=knowledge_base_path
+    )
+
+
+@app.command()
+def knowledge_export(
+    output_path: Annotated[str, typer.Option("--output", "-o", help="Output file path")],
+    format: Annotated[str, typer.Option("--format", help="Export format")] = "json",
+    knowledge_base_path: Annotated[Optional[str], typer.Option("--kb-path", help="Knowledge base directory")] = None,
+) -> None:
+    """📤 Export RAG knowledge base to a file."""
+    
+    run_knowledge_export_command(
+        output_path=output_path,
+        format=format,
+        knowledge_base_path=knowledge_base_path
+    )
 
 
 @app.callback()

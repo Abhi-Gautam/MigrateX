@@ -10,6 +10,7 @@ import logging
 import google.generativeai as genai
 
 from ..analysis.module_analyzer import SemanticModule
+from ..rag import RAGPipeline, RAGConfig
 from .models import (
     TranslationResult, TranslationContext, TranslationStatus, 
     TranslationLanguage, BatchTranslationResult
@@ -21,12 +22,22 @@ logger = logging.getLogger(__name__)
 class TranslationEngine:
     """LLM-powered engine for translating semantic modules between programming languages."""
     
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(
+        self, 
+        api_key: Optional[str] = None, 
+        model_name: str = "gemini-2.0-flash-exp",
+        enable_rag: bool = True,
+        rag_config: Optional[RAGConfig] = None,
+        knowledge_base_path: Optional[str] = None
+    ):
         """Initialize the translation engine.
         
         Args:
             api_key: Google API key for Gemini (defaults to environment variable)
             model_name: Name of the Gemini model to use
+            enable_rag: Whether to enable RAG-based context enhancement
+            rag_config: Configuration for RAG pipeline
+            knowledge_base_path: Path to existing knowledge base
         """
         # Translation configuration - set first
         self.max_retries = 3
@@ -38,6 +49,19 @@ class TranslationEngine:
         self.model_name = model_name
         self.model = None
         self._initialize_model()
+        
+        # RAG system initialization
+        self.enable_rag = enable_rag
+        self.rag_pipeline = None
+        if enable_rag:
+            try:
+                if not rag_config:
+                    rag_config = RAGConfig(knowledge_base_path=knowledge_base_path)
+                self.rag_pipeline = RAGPipeline(config=rag_config, api_key=self.api_key)
+                logger.info("RAG pipeline initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize RAG pipeline: {e}")
+                self.enable_rag = False
         
     def _initialize_model(self):
         """Initialize the Gemini model."""
@@ -195,6 +219,32 @@ class TranslationEngine:
             if func.dependencies:
                 functions_section += f"Dependencies: {', '.join(func.dependencies)}\\n"
         
+        # Get RAG-enhanced context if available
+        rag_context = ""
+        if self.enable_rag and self.rag_pipeline:
+            try:
+                # Build query from module source code
+                query_code = "\\n".join([func.source_code for func in module.functions])
+                
+                rag_context = self.rag_pipeline.build_translation_context(
+                    query_code=query_code,
+                    source_language="c",
+                    target_language=target_language.value,
+                    include_examples=True,
+                    include_style_guides=True,
+                    include_patterns=True,
+                    include_feedback=True
+                )
+                
+                if rag_context:
+                    logger.info(f"RAG context retrieved for module {module.name}")
+                else:
+                    logger.debug(f"No RAG context found for module {module.name}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to retrieve RAG context: {e}")
+                rag_context = ""
+        
         # Build context information
         context_section = f"""
 MODULE CONTEXT:
@@ -207,10 +257,26 @@ MODULE CONTEXT:
 - Complexity Score: {module.complexity_score}
 """
         
-        # Language-specific guidance
-        target_guidance = self._get_language_specific_guidance(target_language)
-        
-        return f"""
+        # Use RAG context if available, otherwise fall back to basic guidance
+        if rag_context:
+            # RAG provides comprehensive context including examples and guidelines
+            prompt = f"""
+{rag_context}
+
+{context_section}
+
+SOURCE MODULE FUNCTIONS:
+{functions_section}
+
+EXISTING TESTS (for reference):
+```c
+{context.existing_tests or 'No existing tests available'}
+```
+"""
+        else:
+            # Fallback to basic guidance when RAG is not available
+            target_guidance = self._get_language_specific_guidance(target_language)
+            prompt = f"""
 You are an expert software engineer specializing in automated code translation. You must translate a complete C module to {target_language.value.title()} while preserving semantic meaning and functionality.
 
 {context_section}
@@ -223,76 +289,154 @@ EXISTING TESTS (for reference):
 {context.existing_tests or 'No existing tests available'}
 ```
 
-{target_guidance}
-
-TRANSLATION REQUIREMENTS:
-
-1. **Semantic Preservation**: Maintain the exact same behavior and functionality
-2. **Idiomatic Code**: Write natural, idiomatic {target_language.value.title()} code
-3. **Memory Safety**: Leverage {target_language.value.title()}'s memory safety features appropriately
-4. **Error Handling**: Implement proper error handling for the target language
-5. **Performance**: Maintain or improve performance characteristics
-6. **API Consistency**: Keep similar function signatures where possible
-7. **Documentation**: Include comprehensive documentation and comments
-
-RESPONSE FORMAT:
-Provide your translation as a JSON object with this EXACT structure:
-
-{{
-    "translated_code": "// Complete {target_language.value.title()} module code here",
-    "translated_tests": "// Complete {target_language.value.title()} test code here",
-    "build_configuration": {{
-        "dependencies": ["dep1", "dep2"],
-        "build_features": ["feature1"],
-        "compiler_flags": ["-flag1"]
-    }},
-    "translation_notes": [
-        "Note about translation decision 1",
-        "Note about translation decision 2"
-    ],
-    "semantic_changes": [
-        "Change in behavior or API if any"
-    ],
-    "api_changes": [
-        "Changes to function signatures or interfaces"
-    ],
-    "performance_notes": [
-        "Performance implications of translation"
-    ],
-    "confidence_score": 85,
-    "ai_reasoning": "Detailed explanation of translation approach and key decisions",
-    "alternative_approaches": [
-        "Alternative approach 1 that was considered",
-        "Alternative approach 2 that was considered"
-    ]
-}}
-
-CRITICAL GUIDELINES:
-- Translate ALL functions in the module
-- Ensure the translated code compiles and runs correctly
-- Preserve all original functionality and edge cases
-- Use appropriate {target_language.value.title()} idioms and patterns
-- Include comprehensive error handling
-- Add clear documentation for complex translations
-- Consider memory management and ownership carefully
-- Maintain or improve performance characteristics
-
-CRITICAL: Your response must be ONLY valid JSON, nothing else. No markdown code blocks, no explanations, no additional text. Just pure JSON starting with {{ and ending with }}.
-
-Example format:
-{{
-    "translated_code": "// Rust code here",
-    "translated_tests": "// Rust tests here",
-    "build_configuration": {{"dependencies": ["serde"]}},
-    "translation_notes": ["Note 1"],
-    "semantic_changes": [],
-    "api_changes": [],
-    "performance_notes": [],
-    "confidence_score": 85,
-    "ai_reasoning": "Translation explanation",
-    "alternative_approaches": []
-}}
-"""
+{target_guidance}"""
+        
+        return prompt
+    
+    def add_translation_feedback(
+        self,
+        original_code: str,
+        generated_translation: str,
+        corrected_translation: Optional[str] = None,
+        feedback_text: Optional[str] = None,
+        rating: Optional[int] = None,
+        source_language: str = "c",
+        target_language: str = "rust"
+    ) -> Optional[str]:
+        """
+        Add human feedback about a translation to improve future translations.
+        
+        Args:
+            original_code: Original source code
+            generated_translation: Translation generated by the engine
+            corrected_translation: Human-corrected version (if any)
+            feedback_text: Human feedback about the translation
+            rating: Quality rating 1-5 (1=terrible, 5=excellent)
+            source_language: Source programming language
+            target_language: Target programming language
+            
+        Returns:
+            Feedback ID if successful, None otherwise
+        """
+        if not self.enable_rag or not self.rag_pipeline:
+            logger.warning("RAG not enabled - cannot add feedback")
+            return None
+        
+        try:
+            feedback_id = self.rag_pipeline.add_human_feedback(
+                original_code=original_code,
+                generated_translation=generated_translation,
+                corrected_translation=corrected_translation,
+                feedback_text=feedback_text,
+                rating=rating,
+                source_language=source_language,
+                target_language=target_language
+            )
+            
+            logger.info(f"Added human feedback with ID: {feedback_id}")
+            return feedback_id
+            
+        except Exception as e:
+            logger.error(f"Failed to add human feedback: {e}")
+            return None
+    
+    def add_code_example(
+        self,
+        source_code: str,
+        target_code: str,
+        source_language: str = "c",
+        target_language: str = "rust",
+        description: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Add a code translation example to the knowledge base.
+        
+        Args:
+            source_code: Source code example
+            target_code: Target code translation
+            source_language: Source programming language
+            target_language: Target programming language
+            description: Description of the translation
+            
+        Returns:
+            Example ID if successful, None otherwise
+        """
+        if not self.enable_rag or not self.rag_pipeline:
+            logger.warning("RAG not enabled - cannot add code example")
+            return None
+        
+        try:
+            example_id = self.rag_pipeline.add_code_snippet(
+                source_code=source_code,
+                target_code=target_code,
+                source_language=source_language,
+                target_language=target_language,
+                description=description
+            )
+            
+            logger.info(f"Added code example with ID: {example_id}")
+            return example_id
+            
+        except Exception as e:
+            logger.error(f"Failed to add code example: {e}")
+            return None
+    
+    def save_knowledge_base(self, path: str) -> bool:
+        """
+        Save the RAG knowledge base to disk.
+        
+        Args:
+            path: Directory path to save knowledge base
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enable_rag or not self.rag_pipeline:
+            logger.warning("RAG not enabled - cannot save knowledge base")
+            return False
+        
+        try:
+            self.rag_pipeline.save_knowledge_base(path)
+            logger.info(f"Knowledge base saved to: {path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save knowledge base: {e}")
+            return False
+    
+    def load_knowledge_base(self, path: str) -> bool:
+        """
+        Load RAG knowledge base from disk.
+        
+        Args:
+            path: Directory path to load knowledge base from
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enable_rag or not self.rag_pipeline:
+            logger.warning("RAG not enabled - cannot load knowledge base")
+            return False
+        
+        try:
+            self.rag_pipeline.load_knowledge_base(path)
+            logger.info(f"Knowledge base loaded from: {path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load knowledge base: {e}")
+            return False
+    
+    def get_rag_statistics(self) -> Optional[Dict[str, Any]]:
+        """Get RAG system statistics."""
+        if not self.enable_rag or not self.rag_pipeline:
+            return None
+        
+        try:
+            return self.rag_pipeline.get_statistics()
+        except Exception as e:
+            logger.error(f"Failed to get RAG statistics: {e}")
+            return None
     
     def _get_language_specific_guidance(self, target_language: TranslationLanguage) -> str:
         """Get language-specific translation guidance."""
