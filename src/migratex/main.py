@@ -7,9 +7,17 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from migratex.cli.visualizer import ModuleTreeVisualizer
 from migratex.pipeline.orchestrator import MigrationOrchestrator
+from migratex.analysis.language_parser import LanguageParser
+from migratex.analysis.test_extractor import TestExtractor
+from migratex.analysis.test_generator import TestGenerator
+from migratex.directory_mapping.metadata_manager import MetadataManager
 
 app = typer.Typer(
     name="migratex",
@@ -153,6 +161,143 @@ def analyze(
         
         # Analyze and display
         visualizer.analyze_repository(repository_path, source_language)
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+@app.command()
+def test_extract(
+    repository_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the source code repository to test",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    generate_tests: Annotated[
+        bool,
+        typer.Option(
+            "--generate", "-g",
+            help="Generate missing tests using AI",
+        ),
+    ] = False,
+    max_functions: Annotated[
+        int,
+        typer.Option(
+            "--max-functions", "-m",
+            help="Maximum number of functions to process (for cost control)",
+        ),
+    ] = 5,
+) -> None:
+    """Extract functions and optionally generate tests for a repository."""
+    
+    console.print(Panel.fit(
+        Text("MigrateX - Test Extraction & Generation", style="bold cyan"),
+        subtitle="Analyzing functions and generating tests",
+    ))
+    
+    try:
+        # Initialize components
+        parser = LanguageParser()
+        test_extractor = TestExtractor()
+        test_generator = TestGenerator() if generate_tests else None
+        metadata_manager = MetadataManager()
+        
+        console.print(f"\n🔍 Analyzing repository: {repository_path}")
+        
+        # Find source files
+        source_files = [f for f in repository_path.rglob("*.c") if "test" not in f.name.lower()]
+        console.print(f"Found {len(source_files)} C source files")
+        
+        # Extract functions
+        all_functions = []
+        for source_file in source_files:
+            console.print(f"  📄 Parsing {source_file.name}...")
+            with open(source_file, 'r') as f:
+                content = f.read()
+            
+            modules = parser.extract_modules(content, "c", str(source_file))
+            functions = [{
+                "name": m.name, 
+                "content": m.source_code, 
+                "dependencies": m.dependencies, 
+                "language": "c",
+                "file": str(source_file)
+            } for m in modules]
+            
+            console.print(f"    ✅ Extracted {len(functions)} functions")
+            all_functions.extend(functions)
+        
+        console.print(f"\n📊 Total functions extracted: {len(all_functions)}")
+        
+        # Create metadata entries
+        for func in all_functions:
+            metadata_manager.create_function_metadata(func)
+        
+        # Find existing tests
+        test_files = test_extractor.identify_test_files(repository_path, "c")
+        console.print(f"\n🧪 Found {len(test_files)} test files")
+        
+        existing_tests = []
+        for test_file in test_files:
+            with open(test_file, 'r') as f:
+                content = f.read()
+            test_functions = test_extractor.extract_test_functions(content, "c")
+            existing_tests.extend(test_functions)
+        
+        console.print(f"Found {len(existing_tests)} existing test functions")
+        
+        # Generate tests if requested
+        if generate_tests and test_generator:
+            console.print(f"\n🤖 Generating tests (limited to {max_functions} functions for cost control)...")
+            
+            functions_to_test = all_functions[:max_functions]
+            generated_count = 0
+            failed_count = 0
+            
+            for func in functions_to_test:
+                console.print(f"  Generating test for {func['name']}...")
+                result = test_generator.generate_test(func)
+                
+                if result:
+                    console.print("    ✅ Generated successfully")
+                    console.print(f"    📝 Test preview:")
+                    # Show first few lines of generated test
+                    preview_lines = result['test_content'].split('\n')[:5]
+                    for line in preview_lines:
+                        console.print(f"      {line}")
+                    console.print("      ...")
+                    
+                    # Associate with metadata
+                    metadata = metadata_manager.get_metadata_by_function_name(func['name'])
+                    if metadata:
+                        metadata_manager.associate_generated_test(metadata['id'], result)
+                    
+                    generated_count += 1
+                else:
+                    console.print("    ❌ Generation failed")
+                    failed_count += 1
+            
+            console.print(f"\n📊 Test generation summary:")
+            console.print(f"  ✅ Successfully generated: {generated_count}")
+            console.print(f"  ❌ Failed: {failed_count}")
+            
+            if generated_count > 0:
+                success_rate = (generated_count / (generated_count + failed_count)) * 100
+                console.print(f"  📈 Success rate: {success_rate:.1f}%")
+        
+        # Summary
+        console.print(f"\n📋 Analysis Summary:")
+        console.print(f"  🔧 Functions found: {len(all_functions)}")
+        console.print(f"  🧪 Existing tests: {len(existing_tests)}")
+        if generate_tests:
+            console.print(f"  🤖 Tests generated: {generated_count}")
+        
+        console.print(f"\n✅ Analysis complete!")
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
