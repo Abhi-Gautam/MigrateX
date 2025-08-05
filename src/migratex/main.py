@@ -15,6 +15,7 @@ load_dotenv()
 from migratex.cli.visualizer import ModuleTreeVisualizer
 from migratex.cli.analyze_command import run_enhanced_analysis
 from migratex.cli.module_analyze_command import run_module_based_analysis
+from migratex.cli.translate_command import run_translation_command
 from migratex.pipeline.orchestrator import MigrationOrchestrator
 from migratex.analysis.language_parser import LanguageParser
 from migratex.analysis.test_extractor import TestExtractor
@@ -445,6 +446,84 @@ def analyze_modules(
             coverage_threshold=coverage_threshold,
             generate_tests=generate_tests,
             save_output=save_output,
+            quiet=quiet
+        )
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def translate_modules(
+    repository_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the source code repository to translate",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    target_language: Annotated[
+        str,
+        typer.Option(
+            "--target", "-t",
+            help="Target language for translation (rust, go, python, javascript, typescript)",
+        ),
+    ] = "rust",
+    max_modules: Annotated[
+        int,
+        typer.Option(
+            "--max-modules", "-m",
+            help="Maximum number of modules to translate (for cost control)",
+        ),
+    ] = 3,
+    project_name: Annotated[
+        Optional[str],
+        typer.Option(
+            "--project-name", "-p",
+            help="Name for the translated project",
+        ),
+    ] = None,
+    output_dir: Annotated[
+        Optional[str],
+        typer.Option(
+            "--output", "-o",
+            help="Output directory to save translated project",
+        ),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet/--verbose",
+            help="Minimal output with summary only",
+        ),
+    ] = False,
+) -> None:
+    """🔄 AI-powered code translation from C to modern languages.
+    
+    This command provides complete module translation:
+    - Extracts semantic modules from source code
+    - AI-powered translation with context awareness
+    - Generates complete project structure with build files
+    - Preserves semantic meaning and functionality
+    - Supports Rust, Go, Python, JavaScript, TypeScript
+    """
+    
+    console.print(Panel.fit(
+        Text("🔄 MigrateX Code Translation", style="bold magenta"),
+        subtitle="AI-powered semantic module translation",
+    ))
+    
+    try:
+        run_translation_command(
+            repository_path=str(repository_path),
+            target_language=target_language,
+            max_modules=max_modules,
+            project_name=project_name,
+            output_dir=output_dir,
             quiet=quiet
         )
         
