@@ -184,4 +184,6 @@ Desktop.ini
 # Project specific
 CRUST-bench/
 Docs/
+# Translation outputs
+translated_*/
 # Keep uv.lock for reproducible builds

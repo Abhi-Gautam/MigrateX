@@ -42,6 +42,12 @@ def run_translation_command(
     if not project_name:
         project_name = f"translated_{repo_path.name}"
     
+    # Set default output directory within migratex_output
+    if not output_dir:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = f"migratex_output/translated_projects/{project_name}_{target_language}_{timestamp}"
+    
     if not quiet:
         console.print(f"🚀 [bold]Starting MigrateX Translation[/bold]")
         console.print(f"📂 Repository: {repository_path}")
