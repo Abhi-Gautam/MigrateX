@@ -14,6 +14,7 @@ load_dotenv()
 
 from migratex.cli.visualizer import ModuleTreeVisualizer
 from migratex.cli.analyze_command import run_enhanced_analysis
+from migratex.cli.module_analyze_command import run_module_based_analysis
 from migratex.pipeline.orchestrator import MigrationOrchestrator
 from migratex.analysis.language_parser import LanguageParser
 from migratex.analysis.test_extractor import TestExtractor
@@ -367,6 +368,84 @@ def analyze_and_generate(
             coverage_threshold=coverage_threshold,
             generate_tests=generate_tests,
             save_output=save_output
+        )
+        
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def analyze_modules(
+    repository_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the source code repository to analyze",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+        ),
+    ],
+    max_modules: Annotated[
+        int,
+        typer.Option(
+            "--max-modules", "-m",
+            help="Maximum number of modules to analyze (for cost control)",
+        ),
+    ] = 5,
+    coverage_threshold: Annotated[
+        int,
+        typer.Option(
+            "--coverage-threshold", "-t",
+            help="Minimum coverage percentage to skip test generation",
+        ),
+    ] = 80,
+    generate_tests: Annotated[
+        bool,
+        typer.Option(
+            "--generate/--no-generate",
+            help="Generate tests for modules with insufficient coverage",
+        ),
+    ] = True,
+    save_output: Annotated[
+        bool,
+        typer.Option(
+            "--save-output/--no-save-output",
+            help="Save analysis results to organized output directory",
+        ),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet/--verbose",
+            help="Minimal output with summary only (no real-time progress)",
+        ),
+    ] = False,
+) -> None:
+    """🏗️ AI-powered semantic module analysis with CFG-based grouping.
+    
+    This command implements the true MigrateX architecture:
+    - Extracts self-contained semantic modules using CFG analysis
+    - Groups related functions based on dependency relationships
+    - AI coverage analysis at the module level (not individual functions)
+    - Intelligent test generation for complete modules
+    - Cost per module instead of per function
+    """
+    
+    console.print(Panel.fit(
+        Text("🏗️ MigrateX Module Analysis", style="bold magenta"),
+        subtitle="Semantic module extraction with AI-powered analysis",
+    ))
+    
+    try:
+        run_module_based_analysis(
+            repository_path=str(repository_path),
+            max_modules=max_modules,
+            coverage_threshold=coverage_threshold,
+            generate_tests=generate_tests,
+            save_output=save_output,
+            quiet=quiet
         )
         
     except Exception as e:
