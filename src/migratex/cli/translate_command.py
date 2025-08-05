@@ -9,7 +9,77 @@ from rich.table import Table
 from ..analysis.module_extractor import ModuleExtractor
 from ..translation.translation_engine import TranslationEngine
 from ..translation.models import TranslationLanguage, BatchTranslationResult
+from ..rag import RAGPipeline, RAGConfig
 from .clean_dashboard import CleanDashboard
+
+
+def initialize_project_knowledge_base(kb_path: str, source_lang: str, target_lang: str, quiet: bool = False) -> None:
+    """Initialize a new knowledge base with common translation patterns."""
+    if not quiet:
+        from rich.console import Console
+        console = Console()
+        console.print(f"🧠 [yellow]Initializing RAG knowledge base at: {kb_path}[/yellow]")
+    
+    try:
+        # Initialize RAG pipeline
+        rag_config = RAGConfig(knowledge_base_path=kb_path)
+        rag_pipeline = RAGPipeline(config=rag_config)
+        
+        # Add common C to Rust translation patterns
+        if source_lang == "c" and target_lang == "rust":
+            # Basic function translation
+            rag_pipeline.add_code_snippet(
+                source_code="int add(int a, int b) { return a + b; }",
+                target_code="fn add(a: i32, b: i32) -> i32 { a + b }",
+                source_language="c",
+                target_language="rust",
+                description="Simple function translation with parameters and return type"
+            )
+            
+            # Memory management
+            rag_pipeline.add_code_snippet(
+                source_code="char* str = malloc(100); strcpy(str, \"hello\"); free(str);",
+                target_code="let str = String::from(\"hello\");",
+                source_language="c",
+                target_language="rust",
+                description="Memory allocation and string handling"
+            )
+            
+            # Struct definition
+            rag_pipeline.add_code_snippet(
+                source_code="typedef struct { int x, y; } Point;",
+                target_code="struct Point { x: i32, y: i32 }",
+                source_language="c",
+                target_language="rust",
+                description="Struct definition with named fields"
+            )
+            
+            # Add Rust style guide
+            rag_pipeline.add_style_guide(
+                title="Rust Naming Conventions",
+                content="Use snake_case for variables and functions, PascalCase for types, SCREAMING_SNAKE_CASE for constants. Prefer descriptive names over abbreviations.",
+                language="rust",
+                category="naming"
+            )
+            
+            # Add error handling pattern
+            rag_pipeline.add_architectural_pattern(
+                name="C to Rust Error Handling",
+                description="Convert C return codes (-1 for error, 0 for success) to Rust Result<T, E> pattern for better error handling and safety.",
+                example_code="// C: int func() { return -1; }\n// Rust: fn func() -> Result<(), Error>",
+                language="rust"
+            )
+        
+        # Save the initialized knowledge base
+        rag_pipeline.save_knowledge_base(kb_path)
+        
+        if not quiet:
+            console.print(f"✅ [green]Knowledge base initialized with {len(rag_pipeline.knowledge_base.code_snippets)} examples[/green]")
+            
+    except Exception as e:
+        if not quiet:
+            console.print(f"⚠️  [yellow]Warning: Could not initialize knowledge base: {e}[/yellow]")
+            console.print(f"   Translation will continue without RAG context")
 
 
 def run_translation_command(
@@ -48,6 +118,9 @@ def run_translation_command(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = f"migratex_output/translated_projects/{project_name}_{target_language}_{timestamp}"
     
+    # Auto-create knowledge base path within project output directory
+    knowledge_base_path = f"{output_dir}/knowledge_base"
+    
     if not quiet:
         console.print(f"🚀 [bold]Starting MigrateX Translation[/bold]")
         console.print(f"📂 Repository: {repository_path}")
@@ -56,9 +129,17 @@ def run_translation_command(
         console.print(f"🏷️  Project Name: {project_name}")
         console.print()
     
+    # Initialize project knowledge base with common patterns
+    initialize_project_knowledge_base(
+        kb_path=knowledge_base_path,
+        source_lang="c",  # Assume C source for now
+        target_lang=target_language,
+        quiet=quiet
+    )
+    
     # Initialize components
     module_extractor = ModuleExtractor()
-    translation_engine = TranslationEngine()
+    translation_engine = TranslationEngine(knowledge_base_path=knowledge_base_path)
     dashboard = CleanDashboard(console, quiet=quiet)
     
     try:
