@@ -12,6 +12,7 @@ build/
 migratex_output/
 develop-eggs/
 dist/
+ppt/
 downloads/
 eggs/
 .eggs/

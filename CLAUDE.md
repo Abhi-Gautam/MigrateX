@@ -27,6 +27,9 @@ uv run pytest -v
 
 # Run tests excluding slow tests
 uv run pytest -m "not slow"
+
+# Run single test method
+uv run pytest tests/test_language_parser.py::TestLanguageParser::test_extract_functions_c
 ```
 
 ### Linting and Type Checking
@@ -134,6 +137,50 @@ The project strictly follows **Test-Driven Development (TDD)**:
 3. Refactor while keeping tests passing
 
 Use `pytest` for Python tests.
+
+## CLI Commands
+
+### Analysis Commands
+```bash
+# Basic repository analysis with module extraction
+uv run python src/migratex/main.py analyze <repository_path>
+
+# Enhanced AI-powered analysis with coverage detection
+uv run python src/migratex/main.py analyze-and-generate <repository_path> --max-functions 5
+
+# Module-based semantic analysis (recommended)
+uv run python src/migratex/main.py analyze-modules <repository_path> --max-modules 5
+```
+
+### Translation Commands
+```bash
+# Translate C code modules to Rust (or go, python, javascript, typescript)
+uv run python src/migratex/main.py translate-modules <repository_path> --target rust --max-modules 3
+
+# Legacy translate command (not recommended)
+uv run python src/migratex/main.py translate <repository_path> rust
+```
+
+### Knowledge Base Management
+```bash
+# Add translation examples to RAG
+uv run python src/migratex/main.py knowledge-add-example --source "<c_code>" --target "<rust_code>"
+
+# Add style guides
+uv run python src/migratex/main.py knowledge-add-guide --title "Rust Best Practices" --content "<guide_content>"
+
+# Add architectural patterns
+uv run python src/migratex/main.py knowledge-add-pattern --name "Builder Pattern" --description "<description>"
+
+# Add human feedback
+uv run python src/migratex/main.py knowledge-add-feedback --original "<code>" --generated "<translation>" --corrected "<fixed>"
+
+# View knowledge base statistics
+uv run python src/migratex/main.py knowledge-stats
+
+# Search knowledge base
+uv run python src/migratex/main.py knowledge-search --query "memory management" --max 5
+```
 
 ## Key Dependencies
 
